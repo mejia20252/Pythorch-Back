@@ -9,8 +9,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copia el código de la aplicación y el modelo
-COPY app/ .
-COPY model.pt .
+COPY main.py .
+COPY best.pt .
 
 # Expone el puerto que usará el servidor (ej. FastAPI)
 EXPOSE 8000
