@@ -3,7 +3,7 @@ FROM pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime
 
 # Instalar las dependencias para OpenCV
 # Esto es necesario para evitar los errores "libGL.so.1" y "libgthread-2.0.so.0"
-RUN apt-get update && apt-get install -y libgl1-mesa-glx libgthread-2.0-0
+RUN apt-get update && apt-get install -y libgl1-mesa-glx libglib2.0-0
 
 # Establece el directorio de trabajo dentro del contenedor
 WORKDIR /app
