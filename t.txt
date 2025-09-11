@@ -1,0 +1,128 @@
+import io
+import os
+from typing import List, Optional
+
+from fastapi import FastAPI, File, UploadFile, Query, HTTPException
+from fastapi.responses import JSONResponse, StreamingResponse, PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
+
+from ultralytics import YOLO
+from PIL import Image
+import numpy as np
+
+# Nuevo import para el reconocimiento de texto
+import pytesseract
+import cv2 # Necesario para procesar la imagen de la placa para OCR
+
+# -------- Config ----------
+DEFAULT_MODEL = r".\runs\detect\train\weights\best.pt"  # ajusta si usas otro run
+MODEL_PATH = os.getenv("MODEL_PATH", DEFAULT_MODEL)
+DEVICE = os.getenv("DEVICE", "cpu")  # "cpu" o "0" si luego tienes CUDA
+IMG_SIZE = int(os.getenv("IMG_SIZE", "640"))
+CONF = float(os.getenv("CONF", "0.01"))
+
+# -------- App -------------
+app = FastAPI(title="YOLO License-Plate API", version="1.0.0")
+
+# CORS (opcional: abre a todo mientras pruebas)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"],
+)
+
+# Carga del modelo una sola vez
+if not os.path.exists(MODEL_PATH):
+    raise FileNotFoundError(f"No se encontró el modelo en: {MODEL_PATH}")
+model = YOLO(MODEL_PATH)
+CLASS_NAMES = model.names  # dict {id: name}
+
+@app.get("/", response_class=PlainTextResponse)
+def root():
+    return (
+        "YOLO Plates API\n"
+        "Endpoints:\n"
+        "  GET  /health\n"
+        "  POST /predict  (multipart: file=@imagen)  ?return_image=false|true\n"
+    )
+
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "model_path": MODEL_PATH,
+        "device": DEVICE,
+        "imgsz": IMG_SIZE,
+        "conf": CONF,
+        "classes": CLASS_NAMES
+    }
+
+def _predict_image_bytes(img_bytes: bytes):
+    try:
+        img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        # Convertimos la imagen de PIL a un array de NumPy para usar con OpenCV
+        img_np = np.array(img)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Imagen inválida: {e}")
+
+    # Predicción (no guardamos en disco)
+    results = model.predict(
+        img, imgsz=IMG_SIZE, conf=CONF, device=DEVICE, verbose=False
+    )
+    r = results[0]
+
+    # Construir JSON de resultados
+    preds = []
+    for b in r.boxes:
+        x1, y1, x2, y2 = [float(v) for v in b.xyxy[0].tolist()]  # pixeles
+        conf = float(b.conf[0])
+        cls_id = int(b.cls[0])
+
+        # Nuevo paso: Recortar la imagen y extraer el texto de la placa
+        # Aseguramos que las coordenadas sean enteros para el recorte
+        x1_int, y1_int, x2_int, y2_int = int(x1), int(y1), int(x2), int(y2)
+        
+        # Recortamos la imagen usando las coordenadas de la caja delimitadora
+        cropped_img = img_np[y1_int:y2_int, x1_int:x2_int]
+        
+        # Convertimos el recorte a escala de grises para mejorar el OCR
+        cropped_img_gray = cv2.cvtColor(cropped_img, cv2.COLOR_RGB2GRAY)
+        
+        # Usamos pytesseract para extraer el texto
+        # El parámetro "lang" es opcional, podrías usar 'eng' o 'spa' si necesitas un idioma específico
+        plate_text = pytesseract.image_to_string(cropped_img_gray, config='--psm 8') # 'psm 8' es para un texto de una sola palabra
+        plate_text = plate_text.strip() # Eliminamos espacios en blanco extra
+
+        preds.append({
+            "bbox_xyxy": [x1, y1, x2, y2],                        # en pixeles
+            "bbox_xywhn": [float(b.xywhn[0][0]), float(b.xywhn[0][1]),
+                           float(b.xywhn[0][2]), float(b.xywhn[0][3])],  # normalizado [0..1]
+            "confidence": conf,
+            "class_id": cls_id,
+            "class_name": CLASS_NAMES.get(cls_id, str(cls_id)),
+            "plate_text": plate_text # Aquí añadimos el texto reconocido
+        })
+
+    # Imagen anotada en memoria (JPEG)
+    annotated = r.plot()              # numpy BGR
+    annotated = annotated[..., ::-1]  # BGR->RGB
+    out = io.BytesIO()
+    Image.fromarray(annotated).save(out, format="JPEG", quality=90)
+    out.seek(0)
+
+    return preds, out
+
+@app.post("/predict")
+async def predict(
+    file: UploadFile = File(...),
+    return_image: bool = Query(False, description="Si true devuelve la imagen anotada (image/jpeg).")
+):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Sube un archivo de imagen.")
+    img_bytes = await file.read()
+
+    preds, img_io = _predict_image_bytes(img_bytes)
+
+    if return_image:
+        return StreamingResponse(img_io, media_type="image/jpeg")
+    return JSONResponse(content={"predictions": preds})

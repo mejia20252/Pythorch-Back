@@ -1,0 +1,37 @@
+
+
+
+
+venv\Scripts\Activate
+
+
+
+
+
+venv\Scripts\Activate
+
+#branch
+git branch
+git checkout -b redireccionar-exitoso
+git add .
+git commit -m "redireccionar-exitoso"
+git push -u origin redireccionar-exitoso
+https://e153c382858a.ngrok-free.app 
+
+
+
+
+pip install matplotlib
+pip install labelImg
+python.exe -m pip install --upgrade pip
+
+pip install --upgrade pip
+pip install --upgrade labelImg pyqt5 lxml
+
+
+pip install python-multipart
+
+python infer.py
+
+uvicorn your_module_name:your_app_instance --reload
+uvicorn infer:app --reload

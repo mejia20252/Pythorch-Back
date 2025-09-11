@@ -1,0 +1,24 @@
+# Directorios y archivos generados automáticamente por Python
+__pycache__/
+*.pyc
+
+# Entorno virtual
+venv/
+
+# Archivos de datos (si son muy grandes)
+# Si tus datos son grandes y no quieres que estén en el repo,
+# ignora el directorio completo o los archivos específicos.
+# /data/
+
+# Resultados de entrenamiento, modelos y logs
+# Esto es crucial para no subir modelos pesados ni resultados temporales
+runs/
+data/
+
+
+
+# Archivos de caché del IDE (VS Code, etc.)
+.vscode/
+
+# Logs de entrenamiento o de la aplicación
+*.log
