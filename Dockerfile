@@ -1,6 +1,10 @@
 # Utiliza una imagen base de Python con PyTorch
 FROM pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime
 
+# Instalar la dependencia de OpenGL para OpenCV
+# Esto es necesario para evitar el error "libGL.so.1"
+RUN apt-get update && apt-get install -y libgl1-mesa-glx
+
 # Establece el directorio de trabajo dentro del contenedor
 WORKDIR /app
 
