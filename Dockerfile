@@ -5,8 +5,12 @@ FROM pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime
 WORKDIR /app
 
 # Copia el archivo de requisitos e instala las dependencias
+# Nota: Elimina torch y torchvision de requirements.txt
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Instalar PyTorch y Torchvision usando el comando oficial
+RUN pip install torch==2.0.1 torchvision==0.15.2 --index-url https://download.pytorch.org/whl/cu117
 
 # Copia el código de la aplicación y el modelo
 COPY main.py .
