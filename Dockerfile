@@ -1,13 +1,14 @@
-# Utiliza una imagen base de Python ligera, compatible con Python 3.10
-# Es importante usar una versión de Python que sea compatible con las versiones de PyTorch y Ultralytics que quieres instalar.
-FROM python:3.10-slim-buster
+# Utiliza una imagen base de Python más reciente, basada en Debian Bookworm (estable actual).
+# Esto solucionará el problema de los repositorios de apt-get.
+FROM python:3.10-slim-bookworm
 
 # Instala las dependencias del sistema necesarias para OpenCV y Tesseract OCR.
 # libgl1-mesa-glx: Requerido por OpenCV en entornos sin cabeza (headless).
 # libglib2.0-0: Otra dependencia común para bibliotecas gráficas.
 # tesseract-ocr, tesseract-ocr-spa: El motor Tesseract y el paquete de idioma español.
 # git, build-essential: Herramientas comunes que podrían ser necesarias para algunas compilaciones o dependencias.
-RUN apt-get update && apt-get install -y \
+# Nota: La lista de dependencias se mantiene igual, ya que son estándar para estas funcionalidades.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1-mesa-glx \
     libglib2.0-0 \
     tesseract-ocr \
@@ -20,7 +21,6 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copia el archivo de requisitos primero para aprovechar la caché de Docker.
-# Esto es crucial: si solo cambian tus archivos de código, Docker no reinstalará las dependencias.
 COPY requirements.txt .
 
 # --- Instalación Crítica de Dependencias ---
@@ -30,10 +30,14 @@ COPY requirements.txt .
 #    Al instalarlo primero, permitimos que PyTorch establezca su entorno correctamente.
 #    Asegúrate de que 'cu117' coincida con la versión de CUDA que esperas o que esté disponible en tu entorno de Render.
 #    Si no usas GPU, podrías cambiar a 'cpu'.
+#    Dado que Render.com suele desplegar en CPUs para servicios web estándar,
+#    es muy probable que necesites la versión 'cpu' de PyTorch.
+#    Si estás seguro de que Render te proporciona una GPU con CUDA 11.7, mantén 'cu117'.
+#    Si no, cambia a 'cpu' para evitar problemas de compatibilidad y tamaño de imagen.
 RUN pip install --no-cache-dir \
     torch==2.0.1 \
     torchvision==0.15.2 \
-    --index-url https://download.pytorch.org/whl/cu117
+    --index-url https://download.pytorch.org/whl/cpu # CAMBIADO a 'cpu' para entornos sin GPU
 
 # 2. Instala las demás dependencias desde requirements.txt.
 #    En este punto, NumPy ya debería haber sido instalado por PyTorch.
