@@ -1,59 +1,48 @@
-# Utiliza una imagen base de Python más reciente, basada en Debian Bookworm (estable actual).
-# Esto solucionará el problema de los repositorios de apt-get.
-FROM python:3.10-slim-bookworm
+# Dockerfile optimizado para desplegar en Render (YOLO Plates API)
+# - Incluye dependencias del sistema (Tesseract, librerías OpenCV, ffmpeg)
+# - Usa caching de pip copiando requirements.txt primero
 
-# Instala las dependencias del sistema necesarias para OpenCV y Tesseract OCR.
-# libgl1-mesa-glx: Requerido por OpenCV en entornos sin cabeza (headless).
-# libglib2.0-0: Otra dependencia común para bibliotecas gráficas.
-# tesseract-ocr, tesseract-ocr-spa: El motor Tesseract y el paquete de idioma español.
-# git, build-essential: Herramientas comunes que podrían ser necesarias para algunas compilaciones o dependencias.
-# Nota: La lista de dependencias se mantiene igual, ya que son estándar para estas funcionalidades.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
-    libglib2.0-0 \
-    tesseract-ocr \
-    tesseract-ocr-spa \
-    git \
-    build-essential \
+FROM python:3.11-slim
+
+# Evitar warnings de Python y forzar salida por streaming
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Instalar dependencias del sistema necesarias para OpenCV, Tesseract y compilación
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+       build-essential \
+       gcc \
+       libgl1 \
+       libglib2.0-0 \
+       libsm6 \
+       libxext6 \
+       libxrender1 \
+       tesseract-ocr \
+       ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Establece el directorio de trabajo dentro del contenedor.
+# Directorio de la aplicación
 WORKDIR /app
 
-# Copia el archivo de requisitos primero para aprovechar la caché de Docker.
-COPY requirements.txt .
+# Copiar sólo requirements primero para aprovechar caché de Docker
+COPY requirements.txt /app/requirements.txt
 
-# --- Instalación Crítica de Dependencias ---
+# Instalar dependencias de Python
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# 1. Instala PyTorch y Torchvision primero.
-#    Esto es vital. PyTorch suele venir precompilado con una versión específica de NumPy.
-#    Al instalarlo primero, permitimos que PyTorch establezca su entorno correctamente.
-#    Asegúrate de que 'cu117' coincida con la versión de CUDA que esperas o que esté disponible en tu entorno de Render.
-#    Si no usas GPU, podrías cambiar a 'cpu'.
-#    Dado que Render.com suele desplegar en CPUs para servicios web estándar,
-#    es muy probable que necesites la versión 'cpu' de PyTorch.
-#    Si estás seguro de que Render te proporciona una GPU con CUDA 11.7, mantén 'cu117'.
-#    Si no, cambia a 'cpu' para evitar problemas de compatibilidad y tamaño de imagen.
-RUN pip install --no-cache-dir \
-    torch==2.0.1 \
-    torchvision==0.15.2 \
-    --index-url https://download.pytorch.org/whl/cpu # CAMBIADO a 'cpu' para entornos sin GPU
+# Copiar el resto del proyecto (incluye best.pt)
+COPY . /app/
 
-# 2. Instala las demás dependencias desde requirements.txt.
-#    En este punto, NumPy ya debería haber sido instalado por PyTorch.
-#    Asegúrate de que 'requirements.txt' NO contenga 'numpy' para evitar conflictos.
-RUN pip install --no-cache-dir -r requirements.txt
+# Variables por defecto (puedes sobrescribirlas en Render)
+ENV MODEL_PATH=/app/best.pt
+ENV DEVICE=cpu
+ENV IMG_SIZE=640
+ENV CONF=0.01
+ENV PORT=8000
 
-# --- Fin de la Instalación Crítica ---
-
-# Copia el código de la aplicación y el modelo entrenado.
-COPY main.py .
-COPY best.pt .
-
-# Expone el puerto que usará el servidor FastAPI.
+# Exponer puerto (Render usa la variable PORT en tiempo de ejecución)
 EXPOSE 8000
 
-# Comando para iniciar la aplicación con Uvicorn.
-# El host 0.0.0.0 permite que la aplicación sea accesible desde fuera del contenedor.
-# El puerto 8000 es donde tu aplicación FastAPI estará escuchando.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Comando por defecto: uvicorn sirve la app FastAPI
+CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]
